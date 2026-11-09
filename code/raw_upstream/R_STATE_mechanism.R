@@ -1,0 +1,282 @@
+# ============================================================================
+# R_STATE_mechanism.R - CORRECTED
+#
+# TESTS THE SUBSTITUTION MECHANISM (state-perpetrated civilian harm)
+#
+# FIXED: Test 4 now uses sample-split instead of flawed triple interaction
+# ============================================================================
+
+suppressMessages({
+  library(data.table)
+  library(fixest)
+})
+
+source("R00_config.R")
+
+log_msg("R_STATE: substitution mechanism — 4 signature tests (CORRECTED)")
+
+OUT <- file.path("outputs", "paper1", "mechanism_state")
+dir.create(OUT, recursive = TRUE, showWarnings = FALSE)
+
+# ── 1) LOAD PANEL ──────────────────────────────────────────────────────
+panel_path <- file.path(DIRS$panels, "panel_pg_month_ALLCW_paper1_shocks.rds")
+if (!file.exists(panel_path)) stop("Panel not found: ", panel_path)
+
+dt <- readRDS(panel_path); setDT(dt)
+dt[, month_int := year(month) * 12L + month(month)]
+
+if (!all(c("lat", "lon") %in% names(dt))) {
+  if (all(c("ycoord", "xcoord") %in% names(dt))) {
+    dt[, `:=`(lat = ycoord, lon = xcoord)]
+  }
+}
+
+if (!"any_isr_removed" %in% names(dt)) {
+  dt[, any_isr_removed := 0L]
+  dt[theatre_id == "Afghanistan" & month >= as.IDate("2021-07-01"), any_isr_removed := 1L]
+  dt[theatre_id %in% c("Syria", "Iraq") & month >= as.IDate("2019-10-01"), any_isr_removed := 1L]
+}
+
+log_msg("Panel: ", nrow(dt), " cell-months, ", uniqueN(dt$pg_id), " cells")
+
+# ── 2) BUILD STATE VAC FROM ACLED ──────────────────────────────────────
+ACLED_PATHS <- c(
+  file.path(DIRS$data_raw, "acled", "acled_full.csv"),
+  file.path(PROJECT_ROOT, "data", "raw", "acled", "acled_full.csv")
+)
+acled_path <- Filter(file.exists, ACLED_PATHS)[1]
+if (is.na(acled_path)) stop("ACLED not found.")
+
+ac <- fread(acled_path, showProgress = FALSE, encoding = "UTF-8")
+setnames(ac, tolower(names(ac)))
+ac[, month := as.IDate(format(as.Date(event_date), "%Y-%m-01"))]
+ac[, fatalities := as.integer(fatalities)]
+ac[is.na(fatalities), fatalities := 0L]
+ac[, pg_row := floor((latitude  + 90)  / 0.5) + 1L]
+ac[, pg_col := floor((longitude + 180) / 0.5) + 1L]
+ac[, pg_id  := (pg_row - 1L) * 720L + pg_col]
+ac[, year_int := year(month)]  # ADD THIS LINE
+
+# State VAC with R23 correction
+ac[, state_inv  := (inter1 == 1L)]
+ac[, is_vac     := grepl("Violence against civilians", event_type, ignore.case = TRUE)]
+ac[, is_remote  := grepl("Explosions|Remote violence", event_type, ignore.case = TRUE)]
+ac[, civ_target := (inter1 == 7L | inter2 == 7L)]
+
+if ("sub_event_type" %in% names(ac)) {
+  ac[, is_airdrone := grepl("Air/drone strike", sub_event_type, ignore.case = TRUE)]
+} else {
+  ac[, is_airdrone := FALSE]
+}
+
+state_vac_events <- ac[state_inv == TRUE & (is_vac == TRUE | 
+                                              (is_remote == TRUE & civ_target == TRUE))]
+
+state_vac_events[, fat_class := fcase(
+  fatalities <= 2, "selective",
+  fatalities <= 4, "mid",
+  fatalities >= 5, "indiscriminate",
+  default = "selective"
+)]
+
+agg_state <- state_vac_events[, .(
+  state_vac        = .N,
+  state_vac_sel    = sum(fat_class == "selective", na.rm = TRUE),
+  state_vac_mid    = sum(fat_class == "mid", na.rm = TRUE),
+  state_vac_ind    = sum(fat_class == "indiscriminate", na.rm = TRUE)
+), by = .(pg_id, month)]
+
+for (cc in names(agg_state)[-(1:2)]) if (cc %in% names(dt)) dt[, (cc) := NULL]
+dt <- merge(dt, agg_state, by = c("pg_id", "month"), all.x = TRUE)
+for (cc in c("state_vac", "state_vac_sel", "state_vac_mid", "state_vac_ind")) {
+  dt[is.na(get(cc)), (cc) := 0L]
+}
+
+dt[, log1p_sv     := log1p(state_vac)]
+dt[, log1p_sv_sel := log1p(state_vac_sel)]
+dt[, log1p_sv_ind := log1p(state_vac_ind)]
+
+log_msg("State VAC: ", sum(dt$state_vac), " total events")
+
+# ── 3) BUILD STATE_CONTROL ─────────────────────────────────────────────
+battle_events <- ac[grepl("^Battles", event_type, ignore.case = TRUE)]
+actor_share <- battle_events[, .(fat = sum(fatalities, na.rm = TRUE)),
+                             by = .(pg_id, year_int, inter1)]
+actor_share[, total := sum(fat), by = .(pg_id, year_int)]
+actor_share[, share := fat / total]
+
+state_ctrl_by_cy <- actor_share[, .(
+  state_share = sum(share[inter1 == 1L], na.rm = TRUE),
+  hhi         = sum(share^2, na.rm = TRUE),
+  total_fat   = total[1]
+), by = .(pg_id, year_int)]
+
+state_ctrl_by_cy[, state_control := state_share * hhi]
+state_ctrl_by_cy[is.na(state_control), state_control := 0]
+
+dt[, year_int := year(month)]
+dt <- merge(dt, state_ctrl_by_cy[, .(pg_id, year_int, state_control)],
+            by = c("pg_id", "year_int"), all.x = TRUE)
+dt[is.na(state_control), state_control := 0]
+dt[, state_control_z := (state_control - mean(state_control, na.rm = TRUE)) /
+     sd(state_control, na.rm = TRUE)]
+
+log_msg("state_control constructed")
+
+# ── 4) BUILD REBEL_HAS_DRONES ──────────────────────────────────────────
+dt[, rebel_has_drones := 0L]
+dt[theatre_id == "Afghanistan" & month >= as.IDate("2019-07-01"), rebel_has_drones := 1L]
+dt[theatre_id == "Iraq"        & month >= as.IDate("2016-07-01"), rebel_has_drones := 1L]
+dt[theatre_id == "Syria"       & month >= as.IDate("2016-07-01"), rebel_has_drones := 1L]
+dt[theatre_id == "Libya"       & month >= as.IDate("2019-06-01"), rebel_has_drones := 1L]
+dt[theatre_id == "Ukraine"     & month >= as.IDate("2014-04-01"), rebel_has_drones := 1L]
+dt[grepl("Yemen", theatre_id)  & month >= as.IDate("2017-01-01"), rebel_has_drones := 1L]
+
+log_msg("rebel_has_drones built")
+
+# ── 5) REGRESSION SETUP ────────────────────────────────────────────────
+CTRL <- intersect(
+  c("nlights_calib_mean", "prec_gpcp", "temp", "water_gc", "forest_gc"),
+  names(dt)
+)
+ctrl_str <- paste(CTRL, collapse = " + ")
+FE <- "pg_id + theatre_id^month_int"
+
+run_test <- function(formula_rhs, outcome, label, extract_term_pattern) {
+  fml <- as.formula(paste0(outcome, " ~ ", formula_rhs, " + ",
+                           ctrl_str, " | ", FE))
+  m <- feols(fml, data = dt, vcov = conley(cutoff = 200, distance = "spherical"))
+  
+  coef_df <- as.data.frame(summary(m)$coeftable)
+  coef_df$term <- rownames(coef_df)
+  setDT(coef_df)
+  
+  target_row <- coef_df[grepl(extract_term_pattern, term)]
+  if (nrow(target_row) == 0) {
+    return(data.table(test = label, term = NA, beta = NA, se = NA, p_value = NA))
+  }
+  
+  data.table(
+    test = label,
+    term = target_row$term[1],
+    beta = target_row$Estimate[1],
+    se = target_row$`Std. Error`[1],
+    p_value = target_row$`Pr(>|t|)`[1]
+  )
+}
+
+results <- list()
+
+# ── TEST 1 — PERPETRATOR ───────────────────────────────────────────────
+cat("\n── TEST 1: PERPETRATOR (state VAC) ──\n")
+results[[1]] <- run_test(
+  formula_rhs = "post_eli:eli_feas + any_isr_removed:eli_feas",
+  outcome     = "log1p_sv",
+  label       = "1. Perpetrator — state VAC (all)",
+  extract_term_pattern = "post_eli:eli_feas"
+)
+print(results[[1]])
+
+# ── TEST 2 — TARGETING STYLE ───────────────────────────────────────────
+cat("\n── TEST 2: TARGETING STYLE (state) ──\n")
+results[[2]] <- run_test(
+  formula_rhs = "post_eli:eli_feas",
+  outcome     = "log1p_sv_sel",
+  label       = "2. Targeting — state selective VAC",
+  extract_term_pattern = "post_eli:eli_feas"
+)
+results[[3]] <- run_test(
+  formula_rhs = "post_eli:eli_feas",
+  outcome     = "log1p_sv_ind",
+  label       = "2. Targeting — state indiscriminate VAC",
+  extract_term_pattern = "post_eli:eli_feas"
+)
+print(results[[2]]); print(results[[3]])
+
+# ── TEST 3 — LOCATION ──────────────────────────────────────────────────
+cat("\n── TEST 3: LOCATION (state × state_control) ──\n")
+results[[4]] <- run_test(
+  formula_rhs = "post_eli:eli_feas + post_eli:eli_feas:state_control_z",
+  outcome     = "log1p_sv",
+  label       = "3. Location — state VAC × state_control",
+  extract_term_pattern = "state_control_z"
+)
+print(results[[4]])
+
+# ── TEST 4 — ASYMMETRY (CORRECTED: SAMPLE SPLIT) ───────────────────────
+cat("\n── TEST 4: ASYMMETRY (state, SAMPLE SPLIT) ──\n")
+
+dt_nodrone <- dt[rebel_has_drones == 0L]
+dt_drone   <- dt[rebel_has_drones == 1L]
+
+fml <- as.formula(paste0("log1p_sv ~ post_eli:eli_feas + ", ctrl_str, " | ", FE))
+
+m_nodrone <- feols(fml, data = dt_nodrone,
+                   vcov = conley(cutoff = 200, distance = "spherical"))
+m_drone   <- feols(fml, data = dt_drone,
+                   vcov = conley(cutoff = 200, distance = "spherical"))
+
+beta_nodrone <- coef(m_nodrone)["post_eli:eli_feas"]
+se_nodrone   <- se(m_nodrone)["post_eli:eli_feas"]
+p_nodrone    <- summary(m_nodrone)$coeftable["post_eli:eli_feas", "Pr(>|t|)"]
+
+beta_drone   <- coef(m_drone)["post_eli:eli_feas"]
+se_drone     <- se(m_drone)["post_eli:eli_feas"]
+p_drone      <- summary(m_drone)$coeftable["post_eli:eli_feas", "Pr(>|t|)"]
+
+diff <- beta_nodrone - beta_drone
+se_diff <- sqrt(se_nodrone^2 + se_drone^2)
+
+results[[5]] <- data.table(
+  test = "4. Asymmetry — state VAC (no rebel drones)",
+  term = "post_eli:eli_feas",
+  beta = beta_nodrone,
+  se = se_nodrone,
+  p_value = p_nodrone
+)
+
+results[[6]] <- data.table(
+  test = "4. Asymmetry — state VAC (rebels have drones)",
+  term = "post_eli:eli_feas",
+  beta = beta_drone,
+  se = se_drone,
+  p_value = p_drone
+)
+
+results[[7]] <- data.table(
+  test = "4. Asymmetry — difference",
+  term = "diff(no_drones - has_drones)",
+  beta = diff,
+  se = se_diff,
+  p_value = 2 * pt(-abs(diff/se_diff), df = min(m_nodrone$nobs, m_drone$nobs))
+)
+
+print(results[[5]]); print(results[[6]]); print(results[[7]])
+
+# ── ASSEMBLE RESULTS ───────────────────────────────────────────────────
+final <- rbindlist(results, fill = TRUE)
+
+cat("\n══════════════════════════════════════════════════════════\n")
+cat("STATE MECHANISM (SUBSTITUTION) — CORRECTED RESULTS\n")
+cat("══════════════════════════════════════════════════════════\n\n")
+print(final[, .(test, beta, se, p_value)])
+
+fwrite(final, file.path(OUT, "R_STATE_results_CORRECTED.csv"))
+
+cat("\n══════════════════════════════════════════════════════════\n")
+cat("INTERPRETATION\n")
+cat("══════════════════════════════════════════════════════════\n\n")
+cat("Test 1 (Perpetrator):   β = ", sprintf("%.4f", results[[1]]$beta),
+    " (p = ", sprintf("%.4f", results[[1]]$p_value), ") — NULL\n", sep="")
+cat("Test 2 (Selective):     β = ", sprintf("%.4f", results[[2]]$beta),
+    " (p = ", sprintf("%.4f", results[[2]]$p_value), ") — NULL\n", sep="")
+cat("Test 3 (Location):      β = ", sprintf("%.4f", results[[4]]$beta),
+    " (p = ", sprintf("%.4f", results[[4]]$p_value), ") — Small\n", sep="")
+cat("Test 4 (Asymmetry):     No drones β = ", sprintf("%.4f", beta_nodrone),
+    " vs Has drones β = ", sprintf("%.4f", beta_drone),
+    " (diff p = ", sprintf("%.4f", results[[7]]$p_value), ") — NULL as predicted\n\n", sep="")
+
+cat("VERDICT: State effects indistinguishable from zero or very small\n")
+cat("         Substitution mechanism NOT strongly supported\n")
+
+log_msg("R_STATE complete (CORRECTED). Outputs in: ", OUT)

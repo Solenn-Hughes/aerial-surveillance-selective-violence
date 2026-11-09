@@ -1,0 +1,12 @@
+data/
+outputs/
+reference/historical_outputs/
+audit/
+*.rds
+*.RDS
+*.RData
+*.Rhistory
+.Rproj.user/
+.DS_Store
+*.zip
+*.xlsx

@@ -1,0 +1,31 @@
+qid,expected_name,asset_name,countryLabel,lat,lon,coordinate_source
+Q33156,Kandahar International Airport,Kandahar International Airport,Afghanistan,31.507222222,65.850277777,airbases_points.rds
+Q2742390,Jalalabad Airport,Jalalabad Airport,Afghanistan,34.399694444,70.498527777,airbases_points.rds
+Q744802,Kabul International Airport,Kabul International Airport,Afghanistan,34.565861111,69.212305555,airbases_points.rds
+Q1431482,Herat International Airport,Herat International Airport,Afghanistan,34.210055555,62.227944444,airbases_points.rds
+Q703013,Mazar-i-Sharif Airport,Mazar-i-Sharif Airport,Afghanistan,36.706888888,67.209083333,airbases_points.rds
+Q2875606,Qala i Naw Airport,Qala i Naw Airport,Afghanistan,34.98575,63.117611111,airbases_points.rds
+Q1837469,Chaghcharan Airport,Chaghcharan Airport,Afghanistan,34.526416666,65.270638888,airbases_points.rds
+Q2875811,Bamyan Airport,Bamyan Airport,Afghanistan,34.81,67.820555555,airbases_points.rds
+Q2736618,Tarin Kowt Airport,Tarin Kowt Airport,Afghanistan,32.605277777,65.864166666,airbases_points.rds
+Q671801,Fayzabad Airport,Fayzabad Airport,Afghanistan,37.119444444,70.518333333,airbases_points.rds
+Q3273815,Ghazni Airport,Ghazni Airport,Afghanistan,33.50469,68.4141,airbases_points.rds
+Q7423786,Sardeh Band Airport,Sardeh Band Airport,Afghanistan,33.321,68.636472222,airbases_points.rds
+Q1658016,Dalbandin Airport,Dalbandin Airport,Pakistan,28.875,64.404444444,airbases_points.rds
+Q978073,Termez Airport,Termez Airport,Uzbekistan,37.286666666,67.31,airbases_points.rds
+Q2875517,Khost Airfield,Khost Airfield,Afghanistan,33.333583333,69.951722222,airbases_points.rds
+Q2875486,Farah Airport,Farah Airport,Afghanistan,32.366166666,62.165472222,airbases_points.rds
+Q2723683,Bost Airport,Bost Airport,Afghanistan,31.558777777,64.364694444,airbases_points.rds
+Q2875530,Maymana Airport,Maymana Airport,Afghanistan,35.933,64.75,airbases_points.rds
+Q2875655,Sheberghan Airfield,Sheberghan Airfield,Afghanistan,36.751305555,65.912583333,airbases_points.rds
+Q2875669,Taloqan Airport,Taloqan Airport,Afghanistan,36.770694444,69.532416666,airbases_points.rds
+Q19931172,Qalat Airport,Qalat Airport,Afghanistan,32.1339,66.8989,airbases_points.rds
+Q1432790,Zaranj Airport,Zaranj Airport,Afghanistan,30.969472222,61.866694444,airbases_points.rds
+Q15040964,Nili Airport,Nili Airport,Afghanistan,33.7167,66.1167,airbases_points.rds
+Q800126,Bagram Air Base,Bagram Air Base,Afghanistan,34.9463889,69.265,Wikidata Q800126
+Q2886559,Shindand Air Base,Shindand Air Base,Afghanistan,33.3913889,62.2611111,Wikidata Q2886559
+Q784017,Camp Shorabak / Camp Bastion,Camp Shorabak / Camp Bastion,Afghanistan,31.8664389,64.1923889,Wikidata Q784017
+Q19931162,Dwyer Airport,Dwyer Airport,Afghanistan,31.1,64.0666667,Wikidata Q19931162
+Q5473246,Forward Operating Base Shank,Forward Operating Base Shank,Afghanistan,33.9224889,69.0773111,Wikidata Q5473246
+Q15040967,Sharana Airstrip,Sharana Airstrip,Afghanistan,33.1166667,68.8333333,Wikidata Q15040967
+Q2875855,Kunduz Airport,Kunduz Airport,Afghanistan,36.665,68.9105556,Wikidata Q2875855

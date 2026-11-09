@@ -1,0 +1,10 @@
+Upload to your EXISTING PRIVATE GitHub repository:
+1. In GitHub, open the repository and confirm Settings > General indicates PRIVATE.
+2. In the repository choose Add file > Upload files (or use Git locally).
+3. Extract the ZIP to a regular folder, then upload the contents (not the ZIP as a single file).
+4. Do NOT add data/raw, outputs, reference/historical_outputs, or the separate 653 MB research archive.
+5. Commit: "Add verified model replication code and provenance notes".
+
+Alternatively use PUBLISH_TO_EXISTING_GITHUB.ps1 with PowerShell and Git installed, from the extracted folder:
+  .\PUBLISH_TO_EXISTING_GITHUB.ps1 -RepoUrl https://github.com/YOUR_USERNAME/aerial-surveillance-selective-violence.git
+This is a write operation to your GitHub account and will require your existing Git authentication.
